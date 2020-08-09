@@ -26,6 +26,7 @@ app.use(json());
 app.use(compression());
 
 app.get('/_ping', (_, res) => res.sendStatus(200));
+app.get('/hello', (_, res) => res.json({ response: 'world' }));
 
 app.listen(process.env.PORT, () => {
   console.log(` started server on http://localhost:${process.env.PORT}`);
