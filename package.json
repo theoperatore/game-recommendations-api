@@ -6,8 +6,17 @@
   "author": "Al Petersen <theoperatore@gmail.com>",
   "license": "MIT",
   "private": true,
+  "husky": {
+    "hooks": {
+      "pre-commit": "pretty-quick --staged"
+    }
+  },
   "devDependencies": {
+    "@kirbysayshi/ts-run": "^5.0.1",
     "@types/node": "^14.0.27",
+    "husky": "^4.2.5",
+    "prettier": "^2.0.5",
+    "pretty-quick": "^2.0.1",
     "typescript": "^3.9.7"
   }
 }
