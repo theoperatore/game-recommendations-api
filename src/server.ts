@@ -66,13 +66,19 @@ app.use(compression());
 
 app.get('/_ping', (_, res) => res.sendStatus(200));
 
+// create a session
+app.use((req, _, next) => {
+  req.session = driver.session();
+  next();
+});
+
 /**
  * GET /games -> get all games; pagination
  *   -> QUERY: limit=number&offset=number
  *   -> RESP: { games: Game[], limit: number, offset: number }
  */
 app.get('/games', async (req, res) => {
-  const session = driver.session();
+  const session = req.session;
   const limit = Number(req.query.limit || '25');
   const offset = Number(req.query.offset || '0');
 
@@ -97,7 +103,6 @@ app.get('/games', async (req, res) => {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
-  session.close();
 });
 
 /**
@@ -105,16 +110,17 @@ app.get('/games', async (req, res) => {
  *   -> QUERY: limit=number&offset=number
  *   -> RESP: { games: Game[] }
  */
-app.get('/users/:userid/games', async (req, res) => {
+app.get('/users/:userid/games', async (req, res, next) => {
+  const session = req.session;
   const limit = Number(req.query.limit || '25');
   const offset = Number(req.query.offset || '0');
   const userId = req.params.userid;
 
   if (!userId) {
-    return res.status(400).json({ message: 'userId path param required' });
+    res.status(400).json({ message: 'userId path param required' });
+    return next();
   }
 
-  const session = driver.session();
   try {
     const result = await session.run(
       `MATCH (u:User { id: $userId })-[r]->(g:Game) return count(g) as total, u.id as userId, u.name as userName, r, g as game ORDER BY g.name SKIP $offset LIMIT $limit`,
@@ -144,7 +150,6 @@ app.get('/users/:userid/games', async (req, res) => {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
-  session.close();
 });
 
 /**
@@ -152,15 +157,17 @@ app.get('/users/:userid/games', async (req, res) => {
  *   -> BODY: { id: string, name: string, gb_uuid: string } Game
  *   -> RESP: { id: string, name: string, gb_uuid: string } Game
  */
-app.post('/games', async (req, res) => {
+app.post('/games', async (req, res, next) => {
+  const session = req.session;
   const name = req.body.name;
   if (!name) {
-    return res.status(400).json({ message: 'Game name required' });
+    res.status(400).json({ message: 'Game name required' });
+    next();
+    return;
   }
 
   const id = gidFrom(req.body.name);
 
-  const session = driver.session();
   try {
     await session.run(`CREATE (:Game { id: $id, name: $name })`, { id, name });
     res.json({ id, name });
@@ -168,48 +175,60 @@ app.post('/games', async (req, res) => {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
-
-  session.close();
 });
 
 /**
  * POST /users/:userid/games/:gameid/relationship -> add a relationship between user and game
  *   -> BODY: { relationship: Relationship_enum }
  */
-app.post('/users/:userid/games/:gameid/relationship', async (req, res) => {
-  const userId = req.params.userid;
-  const gameId = req.params.gameid;
-  const relationship = req.body.relationship;
+app.post(
+  '/users/:userid/games/:gameid/relationship',
+  async (req, res, next) => {
+    const userId = req.params.userid;
+    const gameId = req.params.gameid;
+    const relationship = req.body.relationship;
 
-  if (!userId) {
-    return res.status(400).json({ message: 'Invalid userid' });
+    if (!userId) {
+      res.status(400).json({ message: 'Invalid userid' });
+      return next();
+    }
+
+    if (!gameId) {
+      res.status(400).json({ message: 'Invalid gameid' });
+      return next();
+    }
+
+    if (!VALID_RELATIONSHIPS.has(relationship)) {
+      res
+        .status(400)
+        .json({ message: `Invalid relationship: ${relationship}` });
+      return next();
+    }
+
+    const dist = neo4j.int(RELATIONSHIP_DISTANCES.get(relationship));
+
+    try {
+      await req.session.run(
+        `MATCH (u:User {id: $userId}), (g:Game {id: $gameId}) MERGE (u)-[:${relationship} {dist: $dist}]->(g)`,
+        { userId, gameId, dist },
+      );
+      res.sendStatus(200);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+// ** ADD NEW ROUTES HERE ** //
+
+// auto-cleanup sessions
+app.use((req, _, next) => {
+  if (req.session) {
+    req.session.close();
   }
 
-  if (!gameId) {
-    return res.status(400).json({ message: 'Invalid gameid' });
-  }
-
-  if (!VALID_RELATIONSHIPS.has(relationship)) {
-    return res
-      .status(400)
-      .json({ message: `Invalid relationship: ${relationship}` });
-  }
-
-  const dist = neo4j.int(RELATIONSHIP_DISTANCES.get(relationship));
-
-  const session = driver.session();
-  try {
-    await session.run(
-      `MATCH (u:User {id: $userId}), (g:Game {id: $gameId}) MERGE (u)-[:${relationship} {dist: $dist}]->(g)`,
-      { userId, gameId, dist },
-    );
-    res.sendStatus(200);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-
-  session.close();
+  next();
 });
 
 app.listen(process.env.PORT, () => {
