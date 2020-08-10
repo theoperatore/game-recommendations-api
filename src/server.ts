@@ -82,7 +82,7 @@ app.use((req, _, next) => {
 /**
  * GET /users -> get all users; pagination
  *   -> QUERY: limit=number&offset=number
- *   -> RESP: { users: User[], limit: number, offset: number, total: number }
+ *   -> RESP: { users: User[], limit: number, offset: number, total: string }
  */
 app.get('/users', async (req, res) => {
   const tx = req.session.beginTransaction();
@@ -118,18 +118,23 @@ app.get('/users', async (req, res) => {
 /**
  * GET /games -> get all games; pagination
  *   -> QUERY: limit=number&offset=number
- *   -> RESP: { games: Game[], limit: number, offset: number }
+ *   -> RESP: { games: Game[], limit: number, offset: number, total: string }
  */
 app.get('/games', async (req, res) => {
-  const session = req.session;
+  const tx = req.session.beginTransaction();
   const limit = Number(req.query.limit || '25');
   const offset = Number(req.query.offset || '0');
 
   try {
-    const result = await session.run(
-      `MATCH (n:Game) RETURN n.id AS id, n.name AS name ORDER BY n.name SKIP $offset LIMIT $limit`,
-      { limit, offset },
-    );
+    const [result, totalResult] = await Promise.all([
+      tx.run(
+        `MATCH (n:Game) RETURN n.id AS id, n.name AS name ORDER BY n.name SKIP $offset LIMIT $limit`,
+        { limit, offset },
+      ),
+      tx.run('MATCH (g:Game) RETURN count(g) AS total'),
+    ]);
+
+    const total = totalResult.records[0].get('total').toString();
     const games: Game[] = result.records.map((record) => {
       return {
         id: record.get('id'),
@@ -141,6 +146,7 @@ app.get('/games', async (req, res) => {
       games,
       limit,
       offset,
+      total,
     });
   } catch (error) {
     console.error(error);
