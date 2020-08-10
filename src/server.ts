@@ -2,15 +2,6 @@
  * GET /search -> search for new games from giantbomb api
  *   -> QUERY: q=encoded_text&limit=number&offset=number
  *   -> RESP: { games: GB_Game[], limit: number, offset: number, total: number }
- * GET /games -> get all games; pagination
- *   -> QUERY: limit=number&offset=number
- *   -> RESP: { games: Game[], limit: number, offset: number }
- * POST /games -> add a new game
- *   -> BODY: { id: string, name: string, gb_uuid: string } Game
- *   -> RESP: { id: string, name: string, gb_uuid: string } Game
- * GET /user/:userid/games -> get all games for user; pagination
- *   -> QUERY: limit=number&offset=number
- *   -> RESP: { games: Game[] }
  * POST /user/:userid/games/:gameid/relationship -> add a relationship between user and game
  *   -> BODY: { relationship: Relationship_enum }
  * PUT /user/:userid/games/:gameid/relationship -> change relationship between user and game
@@ -22,6 +13,7 @@ import { json } from 'body-parser';
 import compression from 'compression';
 import morgan from 'morgan';
 import neo4j from 'neo4j-driver';
+import { gidFrom } from './gid';
 
 const driver = neo4j.driver(
   process.env.GRAPHENEDB_BOLT_URL,
@@ -59,7 +51,11 @@ type GameWithRelationship = {
   relationship: GameRelationship;
 };
 
-// returns all games
+/**
+ * GET /games -> get all games; pagination
+ *   -> QUERY: limit=number&offset=number
+ *   -> RESP: { games: Game[], limit: number, offset: number }
+ */
 app.get('/games', async (req, res) => {
   const session = driver.session();
   const limit = Number(req.query.limit || '25');
@@ -88,6 +84,11 @@ app.get('/games', async (req, res) => {
   }
 });
 
+/**
+ * GET /user/:userid/games -> get all games for user; pagination
+ *   -> QUERY: limit=number&offset=number
+ *   -> RESP: { games: Game[] }
+ */
 app.get('/users/:userid/games', async (req, res) => {
   const session = driver.session();
   const limit = Number(req.query.limit || '25');
@@ -123,6 +124,29 @@ app.get('/users/:userid/games', async (req, res) => {
     });
 
     res.json({ games, limit, offset, total });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+/**
+ * POST /games -> add a new game
+ *   -> BODY: { id: string, name: string, gb_uuid: string } Game
+ *   -> RESP: { id: string, name: string, gb_uuid: string } Game
+ */
+app.post('/games', async (req, res) => {
+  const session = driver.session();
+  const name = req.body.name;
+  if (!name) {
+    return res.status(400).json({ message: 'Game name required' });
+  }
+
+  const id = gidFrom(req.body.name);
+
+  try {
+    await session.run(`CREATE (:Game { id: $id, name: $name })`, { id, name });
+    res.json({ id, name });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
