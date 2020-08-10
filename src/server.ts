@@ -20,6 +20,7 @@
 import express from 'express';
 import { json } from 'body-parser';
 import compression from 'compression';
+import morgan from 'morgan';
 import neo4j from 'neo4j-driver';
 
 const driver = neo4j.driver(
@@ -32,6 +33,7 @@ const driver = neo4j.driver(
 );
 
 const app = express();
+app.use(morgan('combined'));
 app.use(json());
 app.use(compression());
 
