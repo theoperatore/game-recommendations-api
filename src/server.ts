@@ -14,6 +14,11 @@ import morgan from 'morgan';
 import neo4j from 'neo4j-driver';
 import { gidFrom } from './gid';
 
+type User = {
+  id: string;
+  name: string;
+};
+
 type Game = {
   id: string;
   name: string;
@@ -72,6 +77,42 @@ app.get('/_ping', (_, res) => res.sendStatus(200));
 app.use((req, _, next) => {
   req.session = driver.session();
   next();
+});
+
+/**
+ * GET /users -> get all users; pagination
+ *   -> QUERY: limit=number&offset=number
+ *   -> RESP: { users: User[], limit: number, offset: number, total: number }
+ */
+app.get('/users', async (req, res) => {
+  const tx = req.session.beginTransaction();
+  const limit = Number(req.query.limit || '25');
+  const offset = Number(req.query.offset || '0');
+
+  try {
+    const [usersResponse, totalResult] = await Promise.all([
+      tx.run(
+        'MATCH (u:User) RETURN u.id AS id, u.name AS name ORDER BY u.name SKIP $offset LIMIT $limit',
+        { limit, offset },
+      ),
+      tx.run('MATCH (u:User) RETURN count(u) AS total'),
+    ]);
+
+    const total = totalResult.records[0].get('total').toString();
+
+    const users: User[] = usersResponse.records.map((record) => {
+      return {
+        id: record.get('id'),
+        name: record.get('name'),
+      };
+    });
+
+    res.json({ users, total, limit, offset });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+    await tx.rollback();
+  }
 });
 
 /**
