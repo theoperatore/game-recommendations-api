@@ -62,7 +62,26 @@ const driver = neo4j.driver(
     process.env.GRAPHENEDB_BOLT_USER,
     process.env.GRAPHENEDB_BOLT_PASSWORD,
   ),
-  { encrypted: 'ENCRYPTION_ON' },
+  {
+    encrypted: 'ENCRYPTION_ON',
+    connectionAcquisitionTimeout: 10000,
+    connectionTimeout: 10000,
+    logging: {
+      level: 'warn',
+      logger: (level, message) => {
+        switch (level) {
+          case 'warn':
+          case 'error':
+            console.error('neo4j-driver', level, message);
+            return;
+          case 'debug':
+          case 'info':
+          default:
+            console.log('neo4j-driver', level, message);
+        }
+      },
+    },
+  },
 );
 
 const app = express();
@@ -282,4 +301,9 @@ app.use((req, _, next) => {
 
 app.listen(process.env.PORT, () => {
   console.log(` started server on http://localhost:${process.env.PORT}`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM', 'closing neo4j driver');
+  driver.close();
 });
