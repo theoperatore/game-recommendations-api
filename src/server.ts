@@ -38,6 +38,11 @@ type GameWithRelationship = {
   relationship: GameRelationship;
 };
 
+type UserWithRelationship = {
+  user: User;
+  relationship: GameRelationship;
+};
+
 const VALID_RELATIONSHIPS = new Set<GameRelationship>([
   'COMPLETE_100',
   'BEATEN',
@@ -166,6 +171,46 @@ app.get('/games', async (req, res) => {
       limit,
       offset,
       total,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+/**
+ * GET /games/:gameId -> get a single Game and all users mapped to it with their relationship to the game
+ *   -> RESP: { game: Game, users: UserWithRelationship[] }
+ */
+app.get('/games/:gameId', async (req, res) => {
+  const gameId = req.params.gameId;
+
+  try {
+    const result = await req.session.run(
+      `MATCH (n:Game { id: $gameId })<-[r]-(u:User) RETURN n AS game, u AS user, type(r) as relationship`,
+      { gameId },
+    );
+
+    const users: UserWithRelationship[] = result.records.map((record) => {
+      const user = record.get('user');
+      return {
+        user: {
+          id: user.properties.id,
+          name: user.properties.name,
+        },
+        relationship: record.get('relationship'),
+      };
+    });
+
+    const g = result.records[0].get('game');
+    const game: Game = {
+      id: g.properties.id,
+      name: g.properties.name,
+    };
+
+    res.json({
+      game,
+      users,
     });
   } catch (error) {
     console.error(error);
