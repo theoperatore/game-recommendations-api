@@ -182,8 +182,13 @@ app.get('/games', async (req, res) => {
  * GET /games/:gameId -> get a single Game and all users mapped to it with their relationship to the game
  *   -> RESP: { game: Game, users: UserWithRelationship[] }
  */
-app.get('/games/:gameId', async (req, res) => {
+app.get('/games/:gameId', async (req, res, next) => {
   const gameId = req.params.gameId;
+
+  if (!gameId) {
+    res.status(400).json({ message: 'GameId required' });
+    return next();
+  }
 
   try {
     const result = await req.session.run(
