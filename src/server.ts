@@ -338,6 +338,15 @@ app.post(
   },
 );
 
+// TODO: actually make this rec endpoint work!
+// app.get('/users/:userid/recommendations', async (req, res, next) => {
+//   // reason_rel and reason_rel_other should have the same length as reason_games and indicies will correspond to each other.
+//   const query = `match (a:User {id: $userId})-[b]->(c:Game)<-[d]-(e:User)-[f]->(g:Game)
+//                  where not (a)-[]->(g) and b.dist = d.dist
+//                  with sum(b.dist + d.dist + f.dist) as dist, a, b, c, d, e, f, g
+//                  return distinct min(dist) as mDist, g as rec, collect(c) as reason_games, collect(type(b)) as reason_rel, collect(type(d)) as reason_rel_other ORDER BY mDist`;
+// });
+
 // ** ADD NEW ROUTES HERE ** //
 
 // auto-cleanup sessions
